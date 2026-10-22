@@ -2,7 +2,7 @@ export type RetryDecision = { retry: boolean; delayHours?: number; reason: strin
 
 // Conservative starter policy. Stripe's own retry configuration and network guidance
 // should take precedence; hard declines must not be retried automatically.
-const HARD_DECLINES = new Set(["authentication_required", " do_not_honor", "lost_card", "stolen_card", "pickup_card", "restricted_card", "invalid_account"]);
+const HARD_DECLINES = new Set(["authentication_required", "do_not_honor", "lost_card", "stolen_card", "pickup_card", "restricted_card", "invalid_account"]);
 
 export function decideRetry(code: string | null | undefined, attemptCount: number): RetryDecision {
   const normalized = (code ?? "").trim().toLowerCase();
