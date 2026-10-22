@@ -7,6 +7,7 @@ import { config } from "./lib/config.js";
 import { pool } from "./lib/db.js";
 import { stripe } from "./lib/stripe.js";
 import { requireApiToken } from "./lib/auth.js";
+import { processStripeEvent } from "./lib/stripe-events.js";
 
 const app = express();
 app.disable("x-powered-by");
@@ -36,11 +37,34 @@ app.post("/webhooks/stripe", express.raw({ type: "application/json", limit: "1mb
       [event.id, event.type, JSON.stringify(event)]
     );
     if (inserted.rowCount === 0) {
-      res.status(200).json({ received: true, duplicate: true });
-      return;
+      const existing = await pool.query("SELECT processed_at, processing_error, payload FROM stripe_events WHERE id=$1", [event.id]);
+      if (existing.rows[0]?.processed_at || !existing.rows[0]?.processing_error) {
+        res.status(200).json({ received: true, duplicate: true });
+        return;
+      }
+      // Continue processing an event whose earlier attempt failed.
     }
 
-    // Durable event receipt first; process asynchronously via worker.
+    // Process supported invoice events transactionally after the event is durably stored.
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await processStripeEvent(client, event);
+      await client.query("UPDATE stripe_events SET processed_at=now(), processing_error=NULL WHERE id=$1", [event.id]);
+      await client.query("COMMIT");
+    } catch (processingError) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      await pool.query(
+        "UPDATE stripe_events SET processing_error=$2 WHERE id=$1",
+        [event.id, processingError instanceof Error ? processingError.message.slice(0, 500) : "event_processing_failed"]
+      );
+      // Return 500 so Stripe retries delivery. The event row remains idempotent; a
+      // duplicate delivery is reprocessed when processing_error is present.
+      res.status(500).json({ error: "event_processing_failed" });
+      return;
+    } finally {
+      client.release();
+    }
     res.status(200).json({ received: true });
   } catch (error) {
     console.error("stripe_event_persist_failed", error instanceof Error ? error.message : "unknown");
