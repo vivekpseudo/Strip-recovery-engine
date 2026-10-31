@@ -1,73 +1,75 @@
 # Stripe Recovery Engine
 
-A multi-tenant MVP for Stripe failed-payment recovery: verified webhooks, idempotent event processing, retry scheduling, dunning email hooks, and recovery analytics.
+A multi-tenant involuntary-churn recovery platform for SaaS companies, digital publishers, and agencies using Stripe Billing.
 
-> **Status:** MVP scaffold. Before handling live billing traffic, configure secrets, apply migrations, test Stripe webhook signatures, and complete the security checklist below.
+> **Status: MVP foundation.** This repository has a Node.js/TypeScript API, PostgreSQL persistence, Stripe webhook signature verification, event idempotency, invoice lifecycle processing, a retry-policy helper, a worker scaffold, a Billing Portal endpoint, tests, and CI. It is not yet a production-ready dunning platform.
 
 ## Stack
+- Node.js 20+, TypeScript, Express
+- PostgreSQL (Docker Compose locally; managed PostgreSQL compatible)
+- Stripe SDK (webhook verification and Billing Portal)
+- Email adapter planned as the first customer communication channel
+- Vitest and GitHub Actions
 
-- Node.js 20+ / TypeScript / Express
-- PostgreSQL (Supabase-compatible)
-- Stripe SDK for signature verification and Billing Portal sessions
-- Resend-ready email adapter (provider integration behind an interface)
-- Docker Compose for local PostgreSQL
-- Vitest for unit tests
+## Current capabilities
+- `POST /webhooks/stripe`: verifies the Stripe signature against the raw body and stores events idempotently.
+- Invoice payment failure/success lifecycle persistence and audit records.
+- Tenant mapping from Stripe customer IDs; unknown mappings are retained for reconciliation rather than assigned to a guessed tenant.
+- Conservative retry-policy helper.
+- Database-backed worker scaffold. Stripe Billing remains authoritative for actual payment retries.
+- `GET /health`, protected dashboard summary, and `POST /api/billing-portal`.
+- PostgreSQL schema with tenant identifiers and RLS enabled on tenant-scoped operational tables.
 
-## MVP scope
-
-- `POST /webhooks/stripe`: verifies signature against the raw request body, stores Stripe events idempotently, and acknowledges duplicate event IDs.
-- Worker endpoint / scheduler: processes due recovery jobs with bounded retries and idempotent state transitions.
-- Tenant-aware Postgres schema with RLS-ready tenant IDs and audit history.
-- Health endpoint and summary API for dashboard metrics.
-- Passwordless payment method updates through Stripe Billing Portal; this application never stores PAN/CVC.
-- Configurable dunning email provider adapter.
-- CI for type-checking and tests.
+## Important payment-safety boundary
+The worker currently records a hand-off to Stripe Billing; it does **not** independently charge cards. Do not introduce a parallel direct-charge scheduler that conflicts with Stripe Smart Retries or subscription settings. Hard declines and fraud/risk signals must not be retried automatically. Banking calendars are optimization signals only, not guaranteed clearance windows.
 
 ## Quick start
-
-1. Copy `.env.example` to `.env` and fill in local values.
+1. Copy `.env.example` to `.env` and configure local/test credentials.
 2. Start PostgreSQL: `docker compose up -d db`.
 3. Install dependencies: `npm install`.
 4. Apply schema: `npm run db:migrate`.
-5. Start the API: `npm run dev`.
-6. Forward Stripe test events to `/webhooks/stripe` using the Stripe CLI and set `STRIPE_WEBHOOK_SECRET`.
-
-## Environment
-
-See `.env.example`. Never commit credentials or production webhook secrets.
+5. Start API: `npm run dev`.
+6. Start worker separately: `npm run worker`.
+7. Forward Stripe test events to `/webhooks/stripe` with the Stripe CLI and configure `STRIPE_WEBHOOK_SECRET`.
 
 ## API
+- `GET /health` — liveness check.
+- `POST /webhooks/stripe` — verified Stripe webhook endpoint.
+- `GET /api/dashboard/summary` — starter dashboard metrics (bearer token).
+- `POST /api/billing-portal` — create a Stripe-hosted Billing Portal session.
 
-- `GET /health` — liveness check
-- `POST /webhooks/stripe` — Stripe webhook endpoint (Stripe signature required)
-- `GET /api/dashboard/summary` — aggregated recovery metrics (requires bearer API token in this starter)
-- `POST /api/billing-portal` — create a Stripe-hosted customer billing portal session (requires configured Stripe customer ID)
+The current bearer-token authentication and dashboard query are scaffolding only. Do not expose this API to paying customers until tenant identity is derived from verified authentication and all queries are tenant-scoped.
 
-## Deployment notes
+## Documentation
+- [Product specification](docs/PRODUCT_SPEC.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [Roadmap](docs/ROADMAP.md)
+- [Security and compliance](docs/SECURITY.md)
+- [Communication channels](docs/CHANNELS.md)
+- [Development guide](docs/DEVELOPMENT.md)
 
-- Put the API behind HTTPS and a rate limiter.
-- Use a separate worker process for scheduled retries; don't perform long jobs in the webhook request.
-- Set a queue such as BullMQ/Redis or a managed task queue before production scale. The starter's database-backed queue is appropriate only for an MVP.
-- Enable database backups, monitoring, alerting, and tenant isolation tests.
-- Configure Supabase RLS policies for every tenant-scoped table before using Supabase client credentials from a browser.
-- Use Stripe test mode until recovery, refund, cancellation, and webhook replay flows have been validated.
-- Decline-code logic is advisory only: respect Stripe's retry settings, card network guidance, local regulations, and customer consent. Never retry hard declines blindly.
-- Discounts/downgrades must be explicit tenant-configured actions, with limits and audit events. Not enabled automatically by default.
+## Roadmap highlights
+1. Tenant-aware authentication, RBAC, explicit RLS policies, and isolation tests.
+2. Complete decline classification from PaymentIntent/Charge data and a durable queue with leases/dead-letter handling.
+3. Email dunning templates, provider delivery callbacks, unsubscribe/suppression, and quiet-hour enforcement.
+4. Opt-in SMS and WhatsApp Business integrations.
+5. Recovery analytics, schedule experimentation, monitoring, and production operations.
 
-## Pricing hypothesis
+## Development commands
+- `npm run dev` — API with watch mode.
+- `npm run worker` — worker loop.
+- `npm run build` — TypeScript build.
+- `npm run typecheck` — type-check.
+- `npm test` — unit tests.
+- `npm run db:migrate` — apply database schema.
 
-- Starter: $29/month (up to $10k MRR)
-- Growth: $79/month (up to $50k MRR)
-- Scale: $149/month (up to $200k MRR)
-
-Pricing is a hypothesis; validate it with customer interviews.
-
-## Security checklist
-
-- [ ] Replace starter bearer-token auth with Supabase Auth / OIDC and role-based access.
-- [ ] Enforce tenant membership on every query and enable verified PostgreSQL RLS policies.
-- [ ] Rotate all secrets and store them in your deployment secret manager.
-- [ ] Verify webhook signatures and test replay/idempotency handling.
-- [ ] Implement unsubscribe/consent, suppression lists, and email/SMS compliance.
-- [ ] Add rate limits, request-size limits, structured redacted logs, and monitoring.
-- [ ] Review privacy, retention, tax, and consumer-protection requirements in launch markets.
+## Production launch checklist
+- [ ] Replace starter bearer token with tenant-aware OIDC/Supabase Auth and RBAC.
+- [ ] Add and test explicit RLS policies for every tenant-scoped table.
+- [ ] Validate Stripe account/customer ownership mappings.
+- [ ] Test signature verification, duplicate delivery, replay, and out-of-order events.
+- [ ] Implement leased queue processing, bounded retries, and dead-letter handling.
+- [ ] Implement customer timezone, consent, unsubscribe, suppression, and quiet-hour enforcement.
+- [ ] Configure email delivery; add SMS/WhatsApp only with explicit opt-in and compliant providers.
+- [ ] Add rate limits, secret management, redacted logs, monitoring, alerts, backups, and restore drills.
+- [ ] Validate all payment behavior in Stripe test mode before enabling live mode.
