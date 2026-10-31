@@ -1,11 +1,1 @@
-import pg from "pg";
-import { config } from "./config.js";
-
-const { Pool } = pg;
-export const pool = new Pool({
-  connectionString: config.DATABASE_URL,
-  max: 10,
-  idleTimeoutMillis: 30_000,
-  connectionTimeoutMillis: 5_000,
-  ssl: config.NODE_ENV === "production" ? { rejectUnauthorized: true } : undefined
-});
+import pg from 'pg';import {config} from './config.js';const{Pool}=pg;const common={max:10,idleTimeoutMillis:30000,connectionTimeoutMillis:5000,ssl:config.NODE_ENV==='production'?{rejectUnauthorized:true}:undefined};export const pool=new Pool({...common,connectionString:config.DATABASE_URL});export const webhookPool=new Pool({...common,connectionString:config.WEBHOOK_DATABASE_URL});export const workerPool=new Pool({...common,connectionString:config.WORKER_DATABASE_URL});
