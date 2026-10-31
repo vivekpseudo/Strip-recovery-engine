@@ -1,13 +1,11 @@
 import { z } from "zod";
-
 const schema = z.object({
-  NODE_ENV: z.string().default("development"),
-  PORT: z.coerce.number().int().positive().default(3000),
-  DATABASE_URL: z.string().min(1),
-  STRIPE_SECRET_KEY: z.string().startsWith("sk_"),
-  STRIPE_WEBHOOK_SECRET: z.string().startsWith("whsec_"),
-  APP_API_TOKEN: z.string().min(24),
-  APP_BASE_URL: z.string().url().default("http://localhost:3000")
+ NODE_ENV:z.string().default("development"), PORT:z.coerce.number().int().positive().default(3000),
+ DATABASE_URL:z.string().min(1), STRIPE_SECRET_KEY:z.string().startsWith("sk_"),
+ STRIPE_WEBHOOK_SECRET:z.string().startsWith("whsec_"), APP_API_TOKEN:z.string().min(24),
+ APP_BASE_URL:z.string().url().default("http://localhost:3000"),
+ JWT_SECRET:z.string().min(32), RESEND_API_KEY:z.string().optional(), EMAIL_FROM:z.string().email().optional(),
+ TWILIO_ACCOUNT_SID:z.string().optional(), TWILIO_AUTH_TOKEN:z.string().optional(), TWILIO_FROM:z.string().optional(),
+ WHATSAPP_ACCESS_TOKEN:z.string().optional(), WHATSAPP_PHONE_NUMBER_ID:z.string().optional()
 });
-
-export const config = schema.parse(process.env);
+export const config=schema.parse(process.env);
